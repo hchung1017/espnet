@@ -20,7 +20,7 @@ from espnet.nets.pytorch_backend.nets_utils import pad_list
 from espnet.nets.pytorch_backend.nets_utils import th_accuracy
 from espnet.nets.pytorch_backend.nets_utils import to_device
 
-MAX_DECODER_OUTPUT = 5
+MAX_DECODER_OUTPUT = 50
 CTC_SCORING_RATIO = 1.5
 
 
