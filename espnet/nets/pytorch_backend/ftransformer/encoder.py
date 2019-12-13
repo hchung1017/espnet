@@ -8,6 +8,7 @@ from espnet.nets.pytorch_backend.transformer.multi_layer_conv import MultiLayere
 from espnet.nets.pytorch_backend.transformer.positionwise_feed_forward import PositionwiseFeedForward
 from espnet.nets.pytorch_backend.transformer.repeat import repeat
 from espnet.nets.pytorch_backend.transformer.subsampling import Conv2dSubsampling
+from espnet.nets.pytorch_backend.ftransformer.flinear import FLinear
 
 
 class Encoder(torch.nn.Module):
@@ -51,6 +52,14 @@ class Encoder(torch.nn.Module):
         if input_layer == "linear":
             self.embed = torch.nn.Sequential(
                 torch.nn.Linear(idim, attention_dim),
+                torch.nn.LayerNorm(attention_dim),
+                torch.nn.Dropout(dropout_rate),
+                torch.nn.ReLU(),
+                pos_enc_class(attention_dim, positional_dropout_rate)
+            )
+        elif input_layer == "flinear":
+            self.embed = torch.nn.Sequential(
+                FLinear(idim, attention_dim),
                 torch.nn.LayerNorm(attention_dim),
                 torch.nn.Dropout(dropout_rate),
                 torch.nn.ReLU(),
