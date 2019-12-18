@@ -1,4 +1,5 @@
 import torch
+from espnet.nets.pytorch_backend.ftransformer.flinear import FLinear
 
 
 class PositionwiseFeedForward(torch.nn.Module):
@@ -9,10 +10,15 @@ class PositionwiseFeedForward(torch.nn.Module):
     :param float dropout_rate: dropout rate
     """
 
-    def __init__(self, idim, hidden_units, dropout_rate):
+    def __init__(self, idim, hidden_units, dropout_rate, low_rank=False):
         super(PositionwiseFeedForward, self).__init__()
-        self.w_1 = torch.nn.Linear(idim, hidden_units)
-        self.w_2 = torch.nn.Linear(hidden_units, idim)
+        if low_rank:
+          self.w_1 = FLinear(idim, hidden_units)
+          self.w_2 = FLinear(hidden_units, idim)
+        else:
+          self.w_1 = torch.nn.Linear(idim, hidden_units)
+          self.w_2 = torch.nn.Linear(hidden_units, idim)
+
         self.dropout = torch.nn.Dropout(dropout_rate)
 
     def forward(self, x):

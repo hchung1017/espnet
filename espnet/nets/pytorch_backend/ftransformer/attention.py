@@ -3,6 +3,7 @@ import math
 import numpy
 import torch
 from torch import nn
+from espnet.nets.pytorch_backend.ftransformer.flinear import FLinear
 
 
 MIN_VALUE = float(numpy.finfo(numpy.float32).min)
@@ -16,16 +17,22 @@ class MultiHeadedAttention(nn.Module):
     :param float dropout_rate: dropout rate
     """
 
-    def __init__(self, n_head, n_feat, dropout_rate):
+    def __init__(self, n_head, n_feat, dropout_rate, low_rank=False):
         super(MultiHeadedAttention, self).__init__()
         assert n_feat % n_head == 0
         # We assume d_v always equals d_k
         self.d_k = n_feat // n_head
         self.h = n_head
-        self.linear_q = nn.Linear(n_feat, n_feat)
-        self.linear_k = nn.Linear(n_feat, n_feat)
-        self.linear_v = nn.Linear(n_feat, n_feat)
-        self.linear_out = nn.Linear(n_feat, n_feat)
+        if low_rank :
+          self.linear_q = FLinear(n_feat, n_feat)
+          self.linear_k = FLinear(n_feat, n_feat)
+          self.linear_v = FLinear(n_feat, n_feat)
+          self.linear_out = FLinear(n_feat, n_feat)
+        else:
+          self.linear_q = nn.Linear(n_feat, n_feat)
+          self.linear_k = nn.Linear(n_feat, n_feat)
+          self.linear_v = nn.Linear(n_feat, n_feat)
+          self.linear_out = nn.Linear(n_feat, n_feat)
         self.attn = None
         self.dropout = nn.Dropout(p=dropout_rate)
 

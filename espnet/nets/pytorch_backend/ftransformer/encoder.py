@@ -1,13 +1,13 @@
 import torch
 
-from espnet.nets.pytorch_backend.transformer.attention import MultiHeadedAttention
-from espnet.nets.pytorch_backend.transformer.embedding import PositionalEncoding
-from espnet.nets.pytorch_backend.transformer.encoder_layer import EncoderLayer
-from espnet.nets.pytorch_backend.transformer.layer_norm import LayerNorm
-from espnet.nets.pytorch_backend.transformer.multi_layer_conv import MultiLayeredConv1d
-from espnet.nets.pytorch_backend.transformer.positionwise_feed_forward import PositionwiseFeedForward
-from espnet.nets.pytorch_backend.transformer.repeat import repeat
-from espnet.nets.pytorch_backend.transformer.subsampling import Conv2dSubsampling
+from espnet.nets.pytorch_backend.ftransformer.attention import MultiHeadedAttention
+from espnet.nets.pytorch_backend.ftransformer.embedding import PositionalEncoding
+from espnet.nets.pytorch_backend.ftransformer.encoder_layer import EncoderLayer
+from espnet.nets.pytorch_backend.ftransformer.layer_norm import LayerNorm
+from espnet.nets.pytorch_backend.ftransformer.multi_layer_conv import MultiLayeredConv1d
+from espnet.nets.pytorch_backend.ftransformer.positionwise_feed_forward import PositionwiseFeedForward
+from espnet.nets.pytorch_backend.ftransformer.repeat import repeat
+from espnet.nets.pytorch_backend.ftransformer.subsampling import Conv2dSubsampling
 from espnet.nets.pytorch_backend.ftransformer.flinear import FLinear
 
 
@@ -41,25 +41,27 @@ class Encoder(torch.nn.Module):
                  dropout_rate=0.1,
                  positional_dropout_rate=0.1,
                  attention_dropout_rate=0.0,
-                 input_layer="conv2d",
+                 input_layer="linear",
                  pos_enc_class=PositionalEncoding,
                  normalize_before=True,
                  concat_after=False,
                  positionwise_layer_type="linear",
                  positionwise_conv_kernel_size=1,
-                 padding_idx=-1):
+                 padding_idx=-1,
+                 low_rank=False):
         super(Encoder, self).__init__()
         if input_layer == "linear":
+          if low_rank :
             self.embed = torch.nn.Sequential(
-                torch.nn.Linear(idim, attention_dim),
+                FLinear(idim, attention_dim),
                 torch.nn.LayerNorm(attention_dim),
                 torch.nn.Dropout(dropout_rate),
                 torch.nn.ReLU(),
                 pos_enc_class(attention_dim, positional_dropout_rate)
             )
-        elif input_layer == "flinear":
+          else:
             self.embed = torch.nn.Sequential(
-                FLinear(idim, attention_dim),
+                torch.nn.Linear(idim, attention_dim),
                 torch.nn.LayerNorm(attention_dim),
                 torch.nn.Dropout(dropout_rate),
                 torch.nn.ReLU(),
@@ -86,7 +88,8 @@ class Encoder(torch.nn.Module):
         self.normalize_before = normalize_before
         if positionwise_layer_type == "linear":
             positionwise_layer = PositionwiseFeedForward
-            positionwise_layer_args = (attention_dim, linear_units, dropout_rate)
+            positionwise_layer_args = (attention_dim, linear_units,
+                                       dropout_rate, low_rank)
         elif positionwise_layer_type == "conv1d":
             positionwise_layer = MultiLayeredConv1d
             positionwise_layer_args = (attention_dim, linear_units, positionwise_conv_kernel_size, dropout_rate)
@@ -96,7 +99,8 @@ class Encoder(torch.nn.Module):
             num_blocks,
             lambda: EncoderLayer(
                 attention_dim,
-                MultiHeadedAttention(attention_heads, attention_dim, attention_dropout_rate),
+                MultiHeadedAttention(attention_heads, attention_dim,
+                                     attention_dropout_rate, low_rank),
                 positionwise_layer(*positionwise_layer_args),
                 dropout_rate,
                 normalize_before,
