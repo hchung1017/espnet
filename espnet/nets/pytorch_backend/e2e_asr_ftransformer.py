@@ -440,3 +440,4 @@ class E2E(ASRInterface, torch.nn.Module):
     
     def pruning(self, thr=0.05, mink=1, verbose=False):
       self.encoder.pruning(thr, mink, verbose)
+      self.decoder.pruning(thr, mink, verbose)

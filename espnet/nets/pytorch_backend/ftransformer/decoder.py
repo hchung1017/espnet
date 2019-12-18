@@ -140,3 +140,16 @@ class Decoder(torch.nn.Module):
             return torch.log_softmax(self.output_layer(x_), dim=-1)
         else:
             return x_
+
+    def pruning(self, thr=0.05, mink=1, verbose=False):
+      for decoder in self.decoders :
+        decoder.self_attn.linear_q.pruning(thr, mink, verbose)
+        decoder.self_attn.linear_k.pruning(thr, mink, verbose)
+        decoder.self_attn.linear_v.pruning(thr, mink, verbose)
+        decoder.self_attn.linear_out.pruning(thr, mink, verbose)
+        decoder.src_attn.linear_q.pruning(thr, mink, verbose)
+        decoder.src_attn.linear_k.pruning(thr, mink, verbose)
+        decoder.src_attn.linear_v.pruning(thr, mink, verbose)
+        decoder.src_attn.linear_out.pruning(thr, mink, verbose)
+        decoder.feed_forward.w_1.pruning(thr, mink, verbose)
+        decoder.feed_forward.w_2.pruning(thr, mink, verbose)
