@@ -51,19 +51,23 @@ class FLinear(nn.Module):
       )   
 
 
-    def pruning(self, thr=0.2):
-      sorted, indices = torch.sort(torch.abs(self.S.data))
-      print("data    : ", self.S.data)
-      print("sorted  : ", sorted)
-      print("indices : ", indices)
+    def pruning(self, thr=0.2, mink=1, verbose=True):
+      sorted, indices = torch.sort(torch.abs(self.S.data),descending=True)
 
-      #self.S.data[torch.abs(F.relu(self.S.data)) < thr] = 0.0
+      if verbose:
+        print("data    : ", self.S.data)
+        print("sorted  : ", sorted)
+        print("indices : ", indices)
+
+#      self.S.data[torch.abs(F.relu(self.S.data)) < thr] = 0.0
       self.S.data[torch.abs(self.S.data) < thr] = 0.0
       nzeros = torch.nonzero(self.S.data).view(-1)
+      nzeros = nzeros if len(nzeros) > 0 else indices[0:mink]
       
       self.nzeros = nzeros
 
-      print( "shrink from : ", self.U.data.shape, " : ", self.S.data.shape, " : ", self.V.data.shape )
+      if verbose:
+        print( "shrink from : ", self.U.data.shape, " : ", self.S.data.shape, " : ", self.V.data.shape )
       self.U.data = self.U.data[:, nzeros]
       self.S.data = self.S.data[nzeros]
       self.V.data = self.V.data[nzeros,:]
@@ -71,7 +75,9 @@ class FLinear(nn.Module):
       self.U = torch.nn.Parameter(self.U.data)
       self.S = torch.nn.Parameter(self.S.data)
       self.V = torch.nn.Parameter(self.V.data)
-      print( "shrink to   : ", self.U.shape, " : ", self.S.shape, " : ", self.V.shape )
+
+      if verbose:
+        print( "shrink to   : ", self.U.shape, " : ", self.S.shape, " : ", self.V.shape )
 
 def test():      
   N, D_in, D_out = 4, 16, 16
