@@ -437,3 +437,6 @@ class E2E(ASRInterface, torch.nn.Module):
             if isinstance(m, MultiHeadedAttention):
                 ret[name] = m.attn.cpu().numpy()
         return ret
+    
+    def pruning(self, thr=0.05, mink=1, verbose=False):
+      self.encoder.pruning(thr, mink, verbose)

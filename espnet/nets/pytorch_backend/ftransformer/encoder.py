@@ -126,3 +126,14 @@ class Encoder(torch.nn.Module):
         if self.normalize_before:
             xs = self.after_norm(xs)
         return xs, masks
+
+    def pruning(self, thr=0.05, mink=1, verbose=False):             
+      self.embed[0].pruning(thr)
+      for encoder in self.encoders :
+        encoder.self_attn.linear_q.pruning(thr)
+        encoder.self_attn.linear_k.pruning(thr)
+        encoder.self_attn.linear_v.pruning(thr)
+        encoder.self_attn.linear_out.pruning(thr)
+        encoder.feed_forward.w_1.pruning(thr)
+        encoder.feed_forward.w_2.pruning(thr)
+
