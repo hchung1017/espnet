@@ -1,11 +1,12 @@
 import torch
 
-from espnet.nets.pytorch_backend.transformer.attention import MultiHeadedAttention
-from espnet.nets.pytorch_backend.transformer.decoder_layer import DecoderLayer
-from espnet.nets.pytorch_backend.transformer.embedding import PositionalEncoding
-from espnet.nets.pytorch_backend.transformer.layer_norm import LayerNorm
-from espnet.nets.pytorch_backend.transformer.positionwise_feed_forward import PositionwiseFeedForward
-from espnet.nets.pytorch_backend.transformer.repeat import repeat
+from espnet.nets.pytorch_backend.ftransformer.attention import MultiHeadedAttention
+from espnet.nets.pytorch_backend.ftransformer.decoder_layer import DecoderLayer
+from espnet.nets.pytorch_backend.ftransformer.embedding import PositionalEncoding
+from espnet.nets.pytorch_backend.ftransformer.layer_norm import LayerNorm
+from espnet.nets.pytorch_backend.ftransformer.positionwise_feed_forward import PositionwiseFeedForward
+from espnet.nets.pytorch_backend.ftransformer.repeat import repeat
+from espnet.nets.pytorch_backend.ftransformer.flinear import FLinear
 
 
 class Decoder(torch.nn.Module):
@@ -40,7 +41,8 @@ class Decoder(torch.nn.Module):
                  use_output_layer=True,
                  pos_enc_class=PositionalEncoding,
                  normalize_before=True,
-                 concat_after=False):
+                 concat_after=False,
+                 low_rank=False):
         super(Decoder, self).__init__()
         if input_layer == "embed":
             self.embed = torch.nn.Sequential(
@@ -48,6 +50,15 @@ class Decoder(torch.nn.Module):
                 pos_enc_class(attention_dim, positional_dropout_rate)
             )
         elif input_layer == "linear":
+          if low_rank :
+            self.embed = torch.nn.Sequential(
+                FLinear(odim, attention_dim),
+                torch.nn.LayerNorm(attention_dim),
+                torch.nn.Dropout(dropout_rate),
+                torch.nn.ReLU(),
+                pos_enc_class(attention_dim, positional_dropout_rate)
+            )
+          else:
             self.embed = torch.nn.Sequential(
                 torch.nn.Linear(odim, attention_dim),
                 torch.nn.LayerNorm(attention_dim),
@@ -67,9 +78,12 @@ class Decoder(torch.nn.Module):
             num_blocks,
             lambda: DecoderLayer(
                 attention_dim,
-                MultiHeadedAttention(attention_heads, attention_dim, self_attention_dropout_rate),
-                MultiHeadedAttention(attention_heads, attention_dim, src_attention_dropout_rate),
-                PositionwiseFeedForward(attention_dim, linear_units, dropout_rate),
+                MultiHeadedAttention(attention_heads, attention_dim,
+                                     self_attention_dropout_rate, low_rank),
+                MultiHeadedAttention(attention_heads, attention_dim,
+                                     src_attention_dropout_rate, low_rank),
+                PositionwiseFeedForward(attention_dim, linear_units,
+                                        dropout_rate, low_rank),
                 dropout_rate,
                 normalize_before,
                 concat_after
@@ -78,7 +92,10 @@ class Decoder(torch.nn.Module):
         if self.normalize_before:
             self.after_norm = LayerNorm(attention_dim)
         if use_output_layer:
-            self.output_layer = torch.nn.Linear(attention_dim, odim)
+            if low_rank:
+              self.output_layer = FLinear(attention_dim, odim)
+            else:
+              self.output_layer = torch.nn.Linear(attention_dim, odim)
         else:
             self.output_layer = None
 
