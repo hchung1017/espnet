@@ -41,7 +41,7 @@ class Encoder(torch.nn.Module):
                  dropout_rate=0.1,
                  positional_dropout_rate=0.1,
                  attention_dropout_rate=0.0,
-                 input_layer="linear",
+                 input_layer="conv2d",
                  pos_enc_class=PositionalEncoding,
                  normalize_before=True,
                  concat_after=False,
@@ -128,7 +128,7 @@ class Encoder(torch.nn.Module):
         return xs, masks
 
     def pruning(self, thr=0.05, mink=1, verbose=False):             
-      self.embed[0].pruning(thr, mink, verbose)
+#      self.embed[0].pruning(thr, mink, verbose)
       for encoder in self.encoders :
         encoder.self_attn.linear_q.pruning(thr, mink, verbose)
         encoder.self_attn.linear_k.pruning(thr, mink, verbose)

@@ -28,7 +28,7 @@ class FLinear(nn.Module):
         self.register_parameter('bias', None)
       self.reset_parameters()
 
-    def reset_parameters(self):
+    def reset_parameters_org(self):
       torch.nn.init.kaiming_uniform_(self.V, a=math.sqrt(5))
 
       stdv = 1. / math.sqrt(self.S.size(0))
@@ -39,9 +39,25 @@ class FLinear(nn.Module):
       if self.bias is not None:
         self.bias.data.uniform_(-stdv, stdv)
 
+    def reset_parameters(self):
+      weight=torch.Tensor(self.out_features, self.in_features)
+      torch.nn.init.kaiming_uniform_(weight, a=math.sqrt(5))
+      U, S, V = torch.svd(weight)
+      r = self.k
+      U = U[:, :r]
+      S = S[:r]
+      V = V[:, :r]
+      self.U = torch.nn.Parameter(U)
+      self.S = torch.nn.Parameter(S)
+      self.V = torch.nn.Parameter(V.t())
+      if self.bias is not None:
+        fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(weight)
+        bound = 1 / math.sqrt(fan_in)
+        torch.nn.init.uniform_(self.bias, -bound, bound)
+
     def forward(self, input):
-      #self.weight = torch.mm(self.U, torch.t(torch.mul(F.relu(self.S),torch.t(self.V))))
-      self.weight = torch.mm(self.U, torch.t(torch.mul(self.S,torch.t(self.V))))
+      self.weight = torch.mm(self.U, torch.t(torch.mul(F.relu(self.S),torch.t(self.V))))
+      #self.weight = torch.mm(self.U, torch.t(torch.mul(self.S,torch.t(self.V))))
       return F.linear(input, self.weight, self.bias)
 
     def extra_repr(self):
