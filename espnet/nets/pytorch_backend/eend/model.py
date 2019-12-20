@@ -32,6 +32,7 @@ class TransformerDiarization(nn.Module):
                         linear_units,
                         num_blocks,
                         dropout_rate,
+                        input_layer="linear",
                         low_rank=low_rank)
 
     if low_rank :
