@@ -42,7 +42,7 @@ class Decoder(torch.nn.Module):
                  pos_enc_class=PositionalEncoding,
                  normalize_before=True,
                  concat_after=False,
-                 low_rank=False):
+                 low_rank=False, init_rank_k=0):
         super(Decoder, self).__init__()
         if input_layer == "embed":
             self.embed = torch.nn.Sequential(
@@ -52,7 +52,7 @@ class Decoder(torch.nn.Module):
         elif input_layer == "linear":
           if low_rank :
             self.embed = torch.nn.Sequential(
-                FLinear(odim, attention_dim),
+                FLinear(odim, attention_dim, init_rank_k),
                 torch.nn.LayerNorm(attention_dim),
                 torch.nn.Dropout(dropout_rate),
                 torch.nn.ReLU(),
@@ -93,7 +93,7 @@ class Decoder(torch.nn.Module):
             self.after_norm = LayerNorm(attention_dim)
         if use_output_layer:
             if low_rank:
-              self.output_layer = FLinear(attention_dim, odim)
+              self.output_layer = FLinear(attention_dim, odim, init_rank_k)
             else:
               self.output_layer = torch.nn.Linear(attention_dim, odim)
         else:

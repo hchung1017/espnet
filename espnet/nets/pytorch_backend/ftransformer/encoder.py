@@ -48,12 +48,12 @@ class Encoder(torch.nn.Module):
                  positionwise_layer_type="linear",
                  positionwise_conv_kernel_size=1,
                  padding_idx=-1,
-                 low_rank=False):
+                 low_rank=False, init_rank_k=0):
         super(Encoder, self).__init__()
         if input_layer == "linear":
           if low_rank :
             self.embed = torch.nn.Sequential(
-                FLinear(idim, attention_dim),
+                FLinear(idim, attention_dim, init_rank_k),
                 torch.nn.LayerNorm(attention_dim),
                 torch.nn.Dropout(dropout_rate),
                 torch.nn.ReLU(),

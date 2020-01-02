@@ -8,12 +8,12 @@ import math
 import sys
 
 class FLinear(nn.Module):
-    def __init__(self, in_features, out_features, rank_k=False, bias=True):
+    def __init__(self, in_features, out_features, rank_k=0, bias=True):
       super(FLinear, self).__init__()
       self.in_features = in_features
       self.out_features = out_features
 
-      if rank_k:
+      if rank_k > 0:
         self.k = rank_k
       else:
         self.k = int((out_features*in_features) / (out_features+in_features))
@@ -56,8 +56,8 @@ class FLinear(nn.Module):
         torch.nn.init.uniform_(self.bias, -bound, bound)
 
     def forward(self, input):
-      self.weight = torch.mm(self.U, torch.t(torch.mul(F.relu(self.S),torch.t(self.V))))
-      #self.weight = torch.mm(self.U, torch.t(torch.mul(self.S,torch.t(self.V))))
+      #self.weight = torch.mm(self.U, torch.t(torch.mul(F.relu(self.S),torch.t(self.V))))
+      self.weight = torch.mm(self.U, torch.t(torch.mul(self.S,torch.t(self.V))))
       return F.linear(input, self.weight, self.bias)
 
     def extra_repr(self):
