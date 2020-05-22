@@ -10,8 +10,12 @@ import sys
 class FLinear(nn.Module):
     def __init__(self, in_features, out_features, rank_k=0, bias=True):
       super(FLinear, self).__init__()
+      self.reinit = False
       self.in_features = in_features
       self.out_features = out_features
+
+      self.num_stable_indices = 1
+      self.stable_indices_count = self.num_stable_indices
 
       if rank_k > 0:
         self.k = rank_k
@@ -47,6 +51,13 @@ class FLinear(nn.Module):
       U = U[:, :r]
       S = S[:r]
       V = V[:, :r]
+      
+      if self.reinit == True:
+        self.U0 = U.clone().to("cuda")
+        self.S0 = S.clone().to("cuda")
+        self.V0 = V.clone().to("cuda")
+        self.V0 = self.V0.t()
+
       self.U = torch.nn.Parameter(U)
       self.S = torch.nn.Parameter(S)
       self.V = torch.nn.Parameter(V.t())
@@ -54,6 +65,11 @@ class FLinear(nn.Module):
         fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(weight)
         bound = 1 / math.sqrt(fan_in)
         torch.nn.init.uniform_(self.bias, -bound, bound)
+      
+      ## for stable_pruning
+      sorted, indices = torch.sort(torch.abs(self.S.data),descending=True)
+      self.prev_indices = indices.to("cuda")
+
 
     def forward(self, input):
       #self.weight = torch.mm(self.U, torch.t(torch.mul(F.relu(self.S),torch.t(self.V))))
@@ -66,8 +82,60 @@ class FLinear(nn.Module):
         self.U.shape, self.S.shape, self.V.shape
       )   
 
-
     def pruning(self, thr=0.2, mink=1, verbose=True):
+      self.stable_pruning(thr, mink, verbose)
+
+    def stable_pruning(self, thr=0.2, mink=1, verbose=True):
+      sorted, indices = torch.sort(torch.abs(self.S.data),descending=True)
+
+      # check if the order of singular values are the same.
+      if torch.equal(self.prev_indices, indices) :
+        self.stable_indices_count = self.stable_indices_count-1
+#      diff=self.prev_indices-indices
+      self.prev_indices = indices
+      if self.stable_indices_count > 0 :
+#        print("Same nzero count: ", self.num_stable_indices-self.stable_indices_count, " : ", diff)
+        return
+      self.stable_indices_count = self.num_stable_indices
+#      print("Pruning: ", self.stable_indices_count, " : ", diff)
+
+      if verbose:
+        print("data    : ", self.S.data)
+        print("sorted  : ", sorted)
+        print("indices : ", indices)
+
+#      self.S.data[torch.abs(F.relu(self.S.data)) < thr] = 0.0
+      self.S.data[torch.abs(self.S.data) < thr] = 0.0
+      nzeros = torch.nonzero(self.S.data).view(-1)
+      nzeros = nzeros if len(nzeros) > 0 else indices[0:mink]
+      
+      self.nzeros = nzeros
+
+      if verbose:
+        print( "shrink from : ", self.U.data.shape, " : ", self.S.data.shape, " : ", self.V.data.shape )
+
+      # keep initial weights
+      if self.reinit == True:
+        self.U0 = self.U0[:, nzeros]
+        self.S0 = self.S0[nzeros]
+        self.V0 = self.V0[nzeros,:]
+
+        self.U = torch.nn.Parameter(self.U0)
+        self.S = torch.nn.Parameter(self.S0)
+        self.V = torch.nn.Parameter(self.V0)
+      else:
+        self.U.data = self.U.data[:, nzeros]
+        self.S.data = self.S.data[nzeros]
+        self.V.data = self.V.data[nzeros,:]
+      
+        self.U = torch.nn.Parameter(self.U.data)
+        self.S = torch.nn.Parameter(self.S.data)
+        self.V = torch.nn.Parameter(self.V.data)
+        
+      if verbose:
+        print( "shrink to   : ", self.U.shape, " : ", self.S.shape, " : ", self.V.shape )
+
+    def pruning_org(self, thr=0.2, mink=1, verbose=True):
       sorted, indices = torch.sort(torch.abs(self.S.data),descending=True)
 
       if verbose:
@@ -84,14 +152,25 @@ class FLinear(nn.Module):
 
       if verbose:
         print( "shrink from : ", self.U.data.shape, " : ", self.S.data.shape, " : ", self.V.data.shape )
-      self.U.data = self.U.data[:, nzeros]
-      self.S.data = self.S.data[nzeros]
-      self.V.data = self.V.data[nzeros,:]
-      
-      self.U = torch.nn.Parameter(self.U.data)
-      self.S = torch.nn.Parameter(self.S.data)
-      self.V = torch.nn.Parameter(self.V.data)
 
+      # keep initial weights
+      if self.reinit == True:
+        self.U0 = self.U0[:, nzeros]
+        self.S0 = self.S0[nzeros]
+        self.V0 = self.V0[nzeros,:]
+
+        self.U = torch.nn.Parameter(self.U0)
+        self.S = torch.nn.Parameter(self.S0)
+        self.V = torch.nn.Parameter(self.V0)
+      else:
+        self.U.data = self.U.data[:, nzeros]
+        self.S.data = self.S.data[nzeros]
+        self.V.data = self.V.data[nzeros,:]
+      
+        self.U = torch.nn.Parameter(self.U.data)
+        self.S = torch.nn.Parameter(self.S.data)
+        self.V = torch.nn.Parameter(self.V.data)
+        
       if verbose:
         print( "shrink to   : ", self.U.shape, " : ", self.S.shape, " : ", self.V.shape )
 
