@@ -29,7 +29,7 @@ from espnet.nets.pytorch_backend.nets_utils import pad_list
 from espnet.nets.pytorch_backend.nets_utils import to_device
 from espnet.nets.pytorch_backend.nets_utils import to_torch_tensor
 from espnet.nets.pytorch_backend.rnn.attentions import att_for
-from espnet.nets.pytorch_backend.rnn.decoders import decoder_for
+from espnet.nets.pytorch_backend.rnn.wdecoders import decoder_for
 from espnet.nets.pytorch_backend.rnn.encoders import encoder_for
 
 CTC_LOSS_THRESHOLD = 10000
@@ -278,7 +278,7 @@ class E2E(ASRInterface, torch.nn.Module):
         for l in six.moves.range(len(self.dec.decoder)):
             set_forget_bias_to_one(self.dec.decoder[l].bias_ih)
 
-    def forward(self, xs_pad, ilens, ys_pad, weight=None):
+    def forward(self, xs_pad, ilens, ys_pad):
         """E2E forward
 
         :param torch.Tensor xs_pad: batch of padded input sequences (B, Tmax, idim)
@@ -313,9 +313,7 @@ class E2E(ASRInterface, torch.nn.Module):
         if self.mtlalpha == 1:
             self.loss_att, acc = None, None
         else:
-            self.loss_att, acc, _ = self.dec(hs_pad, hlens, ys_pad,
-                                             tgt_lang_ids=tgt_lang_ids,
-                                             weight=weight)
+            self.loss_att, acc, _ = self.dec(hs_pad, hlens, ys_pad, tgt_lang_ids=tgt_lang_ids)
         self.acc = acc
 
         # 4. compute cer without beam search

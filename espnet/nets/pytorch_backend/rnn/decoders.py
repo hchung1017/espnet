@@ -111,7 +111,125 @@ class Decoder(torch.nn.Module):
                 z_list[l] = self.decoder[l](self.dropout_dec[l - 1](z_list[l - 1]), z_prev[l])
         return z_list, c_list
 
-    def forward(self, hs_pad, hlens, ys_pad, strm_idx=0, tgt_lang_ids=None):
+    def forward(self, hs_pad, hlens, ys_pad, strm_idx=0, tgt_lang_ids=None,
+                weight=None):
+        """Decoder forward
+
+        :param torch.Tensor hs_pad: batch of padded hidden state sequences (B, Tmax, D)
+        :param torch.Tensor hlens: batch of lengths of hidden state sequences (B)
+        :param torch.Tensor ys_pad: batch of padded character id sequence tensor (B, Lmax)
+        :param int strm_idx: stream index indicates the index of decoding stream.
+        :param torch.Tensor tgt_lang_ids: batch of target language id tensor (B, 1)
+        :return: attention loss value
+        :rtype: torch.Tensor
+        :return: accuracy
+        :rtype: float
+        """
+        # TODO(kan-bayashi): need to make more smart way
+        ys = [y[y != self.ignore_id] for y in ys_pad]  # parse padded ys
+        # attention index for the attention module
+        # in SPA (speaker parallel attention), att_idx is used to select attention module. In other cases, it is 0.
+        att_idx = min(strm_idx, len(self.att) - 1)
+
+        # hlen should be list of integer
+        hlens = list(map(int, hlens))
+
+        self.loss = None
+        # prepare input and output word sequences with sos/eos IDs
+        eos = ys[0].new([self.eos])
+        sos = ys[0].new([self.sos])
+        if self.replace_sos:
+            ys_in = [torch.cat([idx, y], dim=0) for idx, y in zip(tgt_lang_ids, ys)]
+        else:
+            ys_in = [torch.cat([sos, y], dim=0) for y in ys]
+        ys_out = [torch.cat([y, eos], dim=0) for y in ys]
+
+        # padding for ys with -1
+        # pys: utt x olen
+        ys_in_pad = pad_list(ys_in, self.eos)
+        ys_out_pad = pad_list(ys_out, self.ignore_id)
+
+        # get dim, length info
+        batch = ys_out_pad.size(0)
+        olength = ys_out_pad.size(1)
+        logging.info(self.__class__.__name__ + ' input lengths:  ' + str(hlens))
+        logging.info(self.__class__.__name__ + ' output lengths: ' + str([y.size(0) for y in ys_out]))
+
+        # initialization
+        c_list = [self.zero_state(hs_pad)]
+        z_list = [self.zero_state(hs_pad)]
+        for _ in six.moves.range(1, self.dlayers):
+            c_list.append(self.zero_state(hs_pad))
+            z_list.append(self.zero_state(hs_pad))
+        att_w = None
+        z_all = []
+        self.att[att_idx].reset()  # reset pre-computation of h
+
+        # pre-computation of embedding
+        eys = self.dropout_emb(self.embed(ys_in_pad))  # utt x olen x zdim
+
+        # loop for an output sequence
+        for i in six.moves.range(olength):
+            att_c, att_w = self.att[att_idx](hs_pad, hlens, self.dropout_dec[0](z_list[0]), att_w)
+            if i > 0 and random.random() < self.sampling_probability:
+                logging.info(' scheduled sampling ')
+                z_out = self.output(z_all[-1])
+                z_out = np.argmax(z_out.detach().cpu(), axis=1)
+                z_out = self.dropout_emb(self.embed(to_device(self, z_out)))
+                ey = torch.cat((z_out, att_c), dim=1)  # utt x (zdim + hdim)
+            else:
+                ey = torch.cat((eys[:, i, :], att_c), dim=1)  # utt x (zdim + hdim)
+            z_list, c_list = self.rnn_forward(ey, z_list, c_list, z_list, c_list)
+            if self.context_residual:
+                z_all.append(torch.cat((self.dropout_dec[-1](z_list[-1]), att_c), dim=-1))  # utt x (zdim + hdim)
+            else:
+                z_all.append(self.dropout_dec[-1](z_list[-1]))  # utt x (zdim)
+
+        z_all = torch.stack(z_all, dim=1).view(batch * olength, -1)
+        # compute loss
+        y_all = self.output(z_all)
+        if LooseVersion(torch.__version__) < LooseVersion('1.0'):
+            reduction_str = 'elementwise_mean'
+        else:
+            reduction_str = 'mean'
+        self.loss = F.cross_entropy(y_all, ys_out_pad.view(-1),
+                                    weight=weight,
+                                    ignore_index=self.ignore_id,
+                                    reduction=reduction_str)
+        # -1: eos, which is removed in the loss computation
+        self.loss *= (np.mean([len(x) for x in ys_in]) - 1)
+        acc = th_accuracy(y_all, ys_out_pad, ignore_label=self.ignore_id)
+        logging.info('att loss:' + ''.join(str(self.loss.item()).split('\n')))
+
+        # compute perplexity
+        ppl = np.exp(self.loss.item() * np.mean([len(x) for x in ys_in]) / np.sum([len(x) for x in ys_in]))
+
+        # show predicted character sequence for debug
+        if self.verbose > 0 and self.char_list is not None:
+            ys_hat = y_all.view(batch, olength, -1)
+            ys_true = ys_out_pad
+            for (i, y_hat), y_true in zip(enumerate(ys_hat.detach().cpu().numpy()),
+                                          ys_true.detach().cpu().numpy()):
+                if i == MAX_DECODER_OUTPUT:
+                    break
+                idx_hat = np.argmax(y_hat[y_true != self.ignore_id], axis=1)
+                idx_true = y_true[y_true != self.ignore_id]
+                seq_hat = [self.char_list[int(idx)] for idx in idx_hat]
+                seq_true = [self.char_list[int(idx)] for idx in idx_true]
+                seq_hat = "".join(seq_hat)
+                seq_true = "".join(seq_true)
+                logging.info("groundtruth[%d]: " % i + seq_true)
+                logging.info("prediction [%d]: " % i + seq_hat)
+
+        if self.labeldist is not None:
+            if self.vlabeldist is None:
+                self.vlabeldist = to_device(self, torch.from_numpy(self.labeldist))
+            loss_reg = - torch.sum((F.log_softmax(y_all, dim=1) * self.vlabeldist).view(-1), dim=0) / len(ys_in)
+            self.loss = (1. - self.lsm_weight) * self.loss + self.lsm_weight * loss_reg
+
+        return self.loss, acc, ppl
+
+    def forward_org(self, hs_pad, hlens, ys_pad, strm_idx=0, tgt_lang_ids=None):
         """Decoder forward
 
         :param torch.Tensor hs_pad: batch of padded hidden state sequences (B, Tmax, D)
