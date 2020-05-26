@@ -192,10 +192,22 @@ class Decoder(torch.nn.Module):
             reduction_str = 'elementwise_mean'
         else:
             reduction_str = 'mean'
-        self.loss = F.cross_entropy(y_all, ys_out_pad.view(-1),
-                                    weight=weight,
+
+        if weight is not None:
+          uloss = F.cross_entropy(y_all, ys_out_pad.view(-1),
+                                      size_average=False,
+                                      reduce=False,
+                                      ignore_index=self.ignore_id,
+                                      reduction=reduction_str)
+          where = torch.tensor([y != self.ignore_id for y in ys_out_pad.view(-1)])
+          uloss = uloss[where]
+          weight = weight.view(-1)[where]
+          self.loss = (weight*uloss).mean()
+        else:
+          self.loss = F.cross_entropy(y_all, ys_out_pad.view(-1),
                                     ignore_index=self.ignore_id,
                                     reduction=reduction_str)
+        
         # -1: eos, which is removed in the loss computation
         self.loss *= (np.mean([len(x) for x in ys_in]) - 1)
         acc = th_accuracy(y_all, ys_out_pad, ignore_label=self.ignore_id)
