@@ -500,6 +500,7 @@ class Decoder(torch.nn.Module):
                 logging.info('adding <eos> in the last position in the loop')
                 for hyp in hyps:
                     hyp['yseq'].append(self.eos)
+                    hyp['lscore'].append(hyp['lscore'][-1])
 
             # add ended hypotheses to a final list, and removed them from current hypotheses
             # (this will be a problem, number of hyps < beam)
